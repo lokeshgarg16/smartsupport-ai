@@ -1,0 +1,15 @@
+streamlit
+langchain>=0.1.14
+langchain-core>=0.1.29
+langchain-community>=0.3.26
+langchain-chroma>=0.2.4
+langchain-huggingface
+chromadb>=0.4.24
+huggingface-hub
+sentence-transformers
+pdfplumber
+redis
+python-dotenv
+deep-translator
+langdetect
+google-generativeai
