@@ -24,10 +24,11 @@ import google.generativeai as genai
 # --- Load environment variables from Streamlit Secrets ---
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
-    hf_token = st.secrets["HUGGINGFACEHUB_API_TOKEN"]
+    hf_token = st.secrets.get("HUGGINGFACEHUB_API_TOKEN", os.getenv("HUGGINGFACEHUB_API_TOKEN"))
     redis_url = st.secrets.get("REDIS_URL", "redis://localhost:6379")
+    st.sidebar.success("✅ Secrets loaded successfully")
 except KeyError as e:
-    st.error(f"❌ Missing secret: {e}")
+    st.error(f"❌ Missing secret: {e}. Please add it in Streamlit > Settings > Secrets.")
     st.stop()
 
 # --- Gemini Setup ---
