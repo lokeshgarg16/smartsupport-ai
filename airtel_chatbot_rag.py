@@ -54,7 +54,6 @@ processed_key = "processed_files"
 embedding_model = HuggingFaceEmbeddings(
     model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
     model_kwargs={"device": "cpu"},
-    huggingfacehub_api_token=hf_token
 )
 
 # --- Setup Upload Folder ---
