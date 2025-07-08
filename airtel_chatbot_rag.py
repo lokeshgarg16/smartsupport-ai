@@ -22,11 +22,16 @@ from langchain_community.chat_message_histories import RedisChatMessageHistory
 import google.generativeai as genai
 
 # --- Load environment variables from Streamlit Secrets ---
+# --- Load environment variables from Streamlit Secrets ---
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
     hf_token = st.secrets.get("HUGGINGFACEHUB_API_TOKEN", os.getenv("HUGGINGFACEHUB_API_TOKEN"))
     redis_url = st.secrets.get("REDIS_URL", "redis://localhost:6379")
-    st.sidebar.success("✅ Secrets loaded successfully")
+
+    if not api_key or not hf_token:
+        raise KeyError("One or more required secrets are missing")
+
+    st.sidebar.success("✅ All secrets loaded successfully")
 except KeyError as e:
     st.error(f"❌ Missing secret: {e}. Please add it in Streamlit > Settings > Secrets.")
     st.stop()
@@ -36,7 +41,14 @@ genai.configure(api_key=api_key)
 model = genai.GenerativeModel("gemini-1.5-flash")
 
 # --- Redis Setup ---
-r = redis.from_url(redis_url)
+try:
+    r = redis.from_url(redis_url)
+    r.ping()
+    st.sidebar.success("✅ Connected to Redis")
+except Exception as err:
+    st.sidebar.error(f"❌ Redis connection failed: {err}")
+    st.stop()
+
 processed_key = "processed_files"
 
 # --- Embedding and Vector Store Setup ---
@@ -44,7 +56,6 @@ embedding_model = HuggingFaceEmbeddings(
     model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
     huggingfacehub_api_token=hf_token
 )
-
 
 UPLOAD_FOLDER = "./uploaded_backup"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
