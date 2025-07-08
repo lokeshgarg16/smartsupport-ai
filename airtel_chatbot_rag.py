@@ -53,8 +53,7 @@ processed_key = "processed_files"
 
 # --- Embedding and Vector Store Setup ---
 embedding_model = HuggingFaceEmbeddings(
-    model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-    huggingfacehub_api_token=hf_token
+    model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 )
 
 UPLOAD_FOLDER = "./uploaded_backup"
