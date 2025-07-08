@@ -13,3 +13,4 @@ python-dotenv
 deep-translator
 langdetect
 google-generativeai
+faiss-cpu

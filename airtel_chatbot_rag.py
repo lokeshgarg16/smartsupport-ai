@@ -9,7 +9,7 @@ from deep_translator import GoogleTranslator
 from langdetect import detect
 
 # Vector DB and Embeddings
-from langchain_community.vectorstores import Chroma
+from langchain.vectorstores import FAISS
 from langchain_huggingface import HuggingFaceEmbeddings
 
 # LangChain core
@@ -21,7 +21,6 @@ from langchain_community.chat_message_histories import RedisChatMessageHistory
 # Gemini API
 import google.generativeai as genai
 
-# --- Load environment variables from Streamlit Secrets ---
 # --- Load environment variables from Streamlit Secrets ---
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
@@ -51,40 +50,48 @@ except Exception as err:
 
 processed_key = "processed_files"
 
-# --- Embedding and Vector Store Setup ---
+# --- Embedding Setup ---
 embedding_model = HuggingFaceEmbeddings(
     model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-    model_kwargs={"device": "cpu"}
+    model_kwargs={"device": "cpu"},
+    huggingfacehub_api_token=hf_token
 )
 
-
+# --- Setup Upload Folder ---
 UPLOAD_FOLDER = "./uploaded_backup"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# --- Advanced Chunking ---
+# --- Text Splitter ---
 splitter = RecursiveCharacterTextSplitter(
     chunk_size=500,
     chunk_overlap=100,
     separators=["\n\n", "\n", ".", "!", "?", " ", ""]
 )
 
-# Function to load Vector Store
+# --- Load Vector Store ---
+VECTOR_STORE_PATH = "vector_index"
+
 def load_vectorstore():
-    return Chroma(
-        collection_name="airtel_faqs",
-        embedding_function=embedding_model
-    )
+    if os.path.exists(VECTOR_STORE_PATH):
+        return FAISS.load_local(VECTOR_STORE_PATH, embedding_model, allow_dangerous_deserialization=True)
+    else:
+        return None
 
 vectorstore = load_vectorstore()
 
-# Load base content
+# Load base FAQ chunks
 with open("faq_chunks.json", "r", encoding="utf-8") as f:
     chunks = json.load(f)
+
 docs = [Document(page_content=chunk, metadata={"source": "base_faq"}) for chunk in chunks]
 
-# Load vectorstore with base data if not already
-if not os.path.exists("./chroma_db/index") or not os.listdir("./chroma_db/index"):
-    vectorstore.add_documents(docs)
+# If vectorstore doesn't exist, create and save
+if vectorstore is None:
+    vectorstore = FAISS.from_documents(docs, embedding_model)
+    vectorstore.save_local(VECTOR_STORE_PATH)
+    st.sidebar.info("📦 Vector store initialized with base FAQ data")
+else:
+    st.sidebar.info("📦 Vector store loaded from local storage")
 
 # --- Streamlit UI ---
 st.set_page_config(page_title="SmartSupport AI", page_icon="📺")
@@ -93,7 +100,7 @@ st.caption("Ask in any language or upload your own Airtel support docs (PDF/CSV)
 
 # --- Chat history ---
 chat_id = "airtel_session"
-history = RedisChatMessageHistory(session_id=chat_id, url="redis://localhost:6379")
+history = RedisChatMessageHistory(session_id=chat_id, url=redis_url)
 memory = ConversationBufferMemory(chat_memory=history, return_messages=True, memory_key="chat_history")
 
 if st.button("Clear Chat"):
@@ -106,8 +113,6 @@ if "chat_ended" not in st.session_state:
 if not st.session_state.chat_ended:
     if st.button("End Chat"):
         history.clear()
-        for key in r.scan_iter("*"):
-            r.delete(key)
         st.session_state.chat_ended = True
         st.success("Chat ended. You can start a new one below.")
 else:
@@ -119,10 +124,10 @@ else:
 if st.button("Reset All Files"):
     try:
         del vectorstore
-        shutil.rmtree("./chroma_db", ignore_errors=True)
-        os.makedirs("./chroma_db", exist_ok=True)
-        vectorstore = load_vectorstore()
-        vectorstore.add_documents(docs)
+        shutil.rmtree(VECTOR_STORE_PATH, ignore_errors=True)
+        os.makedirs(VECTOR_STORE_PATH, exist_ok=True)
+        vectorstore = FAISS.from_documents(docs, embedding_model)
+        vectorstore.save_local(VECTOR_STORE_PATH)
         r.delete(processed_key)
         shutil.rmtree(UPLOAD_FOLDER, ignore_errors=True)
         os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -139,6 +144,7 @@ if st.session_state.get("chat_ended"):
     shutil.rmtree(UPLOAD_FOLDER, ignore_errors=True)
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
+# --- Upload Files ---
 processed_files = r.smembers(processed_key)
 processed_file_names = [f.decode("utf-8") for f in processed_files]
 
@@ -152,7 +158,6 @@ if processed_file_names:
             for q_key in r.smembers(f"questions_for:{file}"):
                 r.delete(f"qa_cache:{file}:{q_key.decode('utf-8')}")
             r.delete(f"questions_for:{file}")
-
             r.srem(processed_key, file)
             r.delete(f"chat_history_{file}")
             r.delete(chat_id)
@@ -164,11 +169,9 @@ if processed_file_names:
             try:
                 vectorstore._collection.delete(where={"source": file})
             except Exception as e:
-                st.warning(f"⚠ Fallback to rebuild due to: {e}")
-                shutil.rmtree("./chroma_db", ignore_errors=True)
-                os.makedirs("./chroma_db", exist_ok=True)
-                vectorstore = load_vectorstore()
-                vectorstore.add_documents(docs)
+                st.warning(f"⚠️ Fallback to rebuild due to: {e}")
+                shutil.rmtree("./vector_index", ignore_errors=True)
+                vectorstore = FAISS.from_documents(docs, embedding_model)
                 for f in r.smembers(processed_key):
                     f_name = f.decode("utf-8")
                     path = os.path.join(UPLOAD_FOLDER, f_name)
@@ -239,16 +242,16 @@ if len(processed_file_names) < 3:
                     r.sadd(processed_key, file_name)
                     st.success(f"✅ '{file_name}' uploaded and added!")
                 else:
-                    st.warning(f"⚠ No readable content in '{file_name}'")
+                    st.warning(f"⚠️ No readable content in '{file_name}'")
         st.rerun()
 else:
     st.warning("📁 Maximum of 3 files uploaded. Please remove one to add more.")
 
-# --- Show chat history ---
+# --- Chat Interface ---
 if not st.session_state.chat_ended:
     for msg in history.messages[-20:]:
         role = "🤑" if msg.type == "human" else "🧠"
-        st.markdown(f"{role}:** {msg.content}")
+        st.markdown(f"{role}: **{msg.content}")
 
     query = st.text_input("💬 Ask your question", placeholder="Ex: Which is best DTH?")
     if query:
