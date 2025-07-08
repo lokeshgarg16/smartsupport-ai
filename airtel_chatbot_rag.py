@@ -53,8 +53,10 @@ processed_key = "processed_files"
 
 # --- Embedding and Vector Store Setup ---
 embedding_model = HuggingFaceEmbeddings(
-    model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+    model_kwargs={"device": "cpu"}
 )
+
 
 UPLOAD_FOLDER = "./uploaded_backup"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
