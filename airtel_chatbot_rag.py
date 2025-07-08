@@ -9,7 +9,7 @@ from deep_translator import GoogleTranslator
 from langdetect import detect
 
 # Vector DB and Embeddings
-from langchain.vectorstores import FAISS
+from langchain_community.vectorstores import FAISS
 from langchain_huggingface import HuggingFaceEmbeddings
 
 # LangChain core
